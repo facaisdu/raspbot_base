@@ -19,15 +19,25 @@
 #include "turtlebot3_core_config.h"
 #include "wiringPi.h"
 
+#define PWMA 1 
+#define AIN1 3 
+#define AIN2 2 
+
+#define PWMB 4 
+#define BIN1 6 
+#define BIN2 5 
+
+
 /*******************************************************************************
 * Setup function
 *******************************************************************************/
-void system_init()
+void initROS()
 {
   //DEBUG_SERIAL.begin(57600);
 
   // Initialize ROS node handle, advertise and subscribe the topics
-  nh.initNode();
+  ros::init(argc,argv,"raspbot_base");
+  //nh.initNode();
   //nh.getHardware()->setBaud(115200);
 
   nh.subscribe(cmd_vel_sub);
@@ -47,8 +57,8 @@ void system_init()
 
   tf_broadcaster.init(nh);
 
-  // Setting for Dynamixel motors
-  motor_driver.init();
+  // Setting for Motors
+  initMotor();
 
   // Setting for IMU
   sensors.init();
@@ -77,87 +87,105 @@ void system_init()
 
 int main(int argc,char *argv[])
 {
+
   wiringPiSetup();
-  system_init();
-  
-  uint32_t t = millis();
-  updateTime();
-  updateVariable();
+  initROS();
 
-  if ((t-tTime[0]) >= (1000 / CONTROL_MOTOR_SPEED_FREQUENCY))
+  while(ros::ok())
   {
-    updateGoalVelocity();
-    motor_driver.controlMotor(WHEEL_SEPARATION, goal_velocity);
-    tTime[0] = t;
-  }
+	  uint32_t t = millis();
+	  updateTime();
+	  updateVariable();
 
-  if ((t-tTime[1]) >= (1000 / CMD_VEL_PUBLISH_FREQUENCY))
-  {
-    publishCmdVelFromRC100Msg();
-    tTime[1] = t;
-  }
+	  if ((t-tTime[0]) >= (1000 / CONTROL_MOTOR_SPEED_FREQUENCY))
+	  {
+	    updateGoalVelocity();
+	    motor_driver.controlMotor(WHEEL_SEPARATION, goal_velocity);
+	    tTime[0] = t;
+	  }
 
-  if ((t-tTime[2]) >= (1000 / DRIVE_INFORMATION_PUBLISH_FREQUENCY))
-  {
-    publishSensorStateMsg();
-    publishBatteryStateMsg();
-    publishDriveInformation();
-    tTime[2] = t;
-  }
+	  if ((t-tTime[1]) >= (1000 / CMD_VEL_PUBLISH_FREQUENCY))
+	  {
+	    publishCmdVelFromRC100Msg();
+	    tTime[1] = t;
+	  }
 
-  if ((t-tTime[3]) >= (1000 / IMU_PUBLISH_FREQUENCY))
-  {
-    publishImuMsg();
-    publishMagMsg();
-    tTime[3] = t;
-  }
+	  if ((t-tTime[2]) >= (1000 / DRIVE_INFORMATION_PUBLISH_FREQUENCY))
+	  {
+	    publishSensorStateMsg();
+	    publishBatteryStateMsg();
+	    publishDriveInformation();
+	    tTime[2] = t;
+	  }
 
-  if ((t-tTime[4]) >= (1000 / VERSION_INFORMATION_PUBLISH_FREQUENCY))
-  {
-    publishVersionInfoMsg();
-    tTime[4] = t;
-  }
+	  if ((t-tTime[3]) >= (1000 / IMU_PUBLISH_FREQUENCY))
+	  {
+	    publishImuMsg();
+	    publishMagMsg();
+	    tTime[3] = t;
+	  }
+
+	  if ((t-tTime[4]) >= (1000 / VERSION_INFORMATION_PUBLISH_FREQUENCY))
+	  {
+	    publishVersionInfoMsg();
+	    tTime[4] = t;
+	  }
 
 #ifdef DEBUG
-  if ((t-tTime[5]) >= (1000 / DEBUG_LOG_FREQUENCY))
-  {
-    sendDebuglog();
-    tTime[5] = t;
-  }
+	  if ((t-tTime[5]) >= (1000 / DEBUG_LOG_FREQUENCY))
+	  {
+	    sendDebuglog();
+	    tTime[5] = t;
+	  }
 #endif
 
-  // Send log message after ROS connection
-  sendLogMsg();
+	  // Send log message after ROS connection
+	  sendLogMsg();
 
-  // Receive data from RC100 
-  controllers.getRCdata(goal_velocity_from_rc100);
+	  // Receive data from RC100 
+	  controllers.getRCdata(goal_velocity_from_rc100);
 
-  // Check push button pressed for simple test drive
-  driveTest(diagnosis.getButtonPress(3000));
+	  // Check push button pressed for simple test drive
+	  driveTest(diagnosis.getButtonPress(3000));
 
-  // Update the IMU unit
-  sensors.updateIMU();
+	  // Update the IMU unit
+	  sensors.updateIMU();
 
-  // TODO
-  // Update sonar data
-  // sensors.updateSonar(t);
+	  // TODO
+	  // Update sonar data
+	  // sensors.updateSonar(t);
 
-  // Start Gyro Calibration after ROS connection
-  updateGyroCali();
+	  // Start Gyro Calibration after ROS connection
+	  updateGyroCali();
 
-  // Show LED status
-  diagnosis.showLedStatus(nh.connected());
+	  // Show LED status
+	  diagnosis.showLedStatus(nh.connected());
 
-  // Update Voltage
-  battery_state = diagnosis.updateVoltageCheck(setup_end);
+	  // Update Voltage
+	  battery_state = diagnosis.updateVoltageCheck(setup_end);
 
-  // Call all the callbacks waiting to be called at that point in time
-  nh.spinOnce();
+	  // Call all the callbacks waiting to be called at that point in time
+	  nh.spinOnce();
 
-  // give the serial link time to process
-  delay(10);
-  
+	  // give the serial link time to process
+	  delay(10);
+  	}
   return 0;
+  
+}
+void initMotor(void)
+{
+
+	pinMode(PWMA,OUTPUT);
+	pinMode(AIN1,OUTPUT);
+	pinMode(AIN2,OUTPUT);
+	
+	pinMode(PWMB,OUTPUT);
+	pinMode(BIN2,OUTPUT);
+	pinMode(BIN1,OUTPUT);
+
+	softPwmCreate(PWMA,0,100);
+	softPwmCreate(PWMB,0,100);
 }
 
 /*******************************************************************************
@@ -639,7 +667,7 @@ void sendLogMsg(void)
 
   String name             = NAME;
   String firmware_version = FIRMWARE_VER;
-  String bringup_log      = "This core(v" + firmware_version + ") is compatible with TB3 " + name;
+  String bringup_log      = "This core(v" + firmware_version + ") is compatible with raspbot " + name;
    
   const char* init_log_data = bringup_log.c_str();
 
@@ -650,7 +678,7 @@ void sendLogMsg(void)
       sprintf(log_msg, "--------------------------");
       nh.loginfo(log_msg);
 
-      sprintf(log_msg, "Connected to OpenCR board!");
+      sprintf(log_msg, "Raspbot base is connected!");
       nh.loginfo(log_msg);
 
       sprintf(log_msg, init_log_data);
@@ -767,3 +795,4 @@ void sendDebuglog(void)
   DEBUG_SERIAL.print("         y : "); DEBUG_SERIAL.println(odom_pose[1]);
   DEBUG_SERIAL.print("     theta : "); DEBUG_SERIAL.println(odom_pose[2]);
 }
+

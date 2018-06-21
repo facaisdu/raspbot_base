@@ -39,7 +39,7 @@
 #include <turtlebot3_msgs/VersionInfo.h>
 
 #include <TurtleBot3.h>
-#include "turtlebot3_waffle.h"
+#include "raspbot_base.h"
 
 #include <math.h>
 
@@ -106,6 +106,10 @@ void initJointStates(void);
 bool calcOdometry(double diff_time);
 
 void sendLogMsg(void);
+
+void initROS(void);
+
+void initMotor(void);
 
 /*******************************************************************************
 * ROS NodeHandle
