@@ -17,6 +17,7 @@
 /* Authors: Yoonseok Pyo, Leon Jung, Darby Lim, HanCheol Cho, Gilbert */
 
 #include "turtlebot3_core_config.h"
+#include "wiringPi.h"
 
 /*******************************************************************************
 * Setup function
