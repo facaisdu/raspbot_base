@@ -77,6 +77,7 @@ void system_init()
 
 int main(int argc,char *argv[])
 {
+  wiringPiSetup();
   system_init();
   
   uint32_t t = millis();
