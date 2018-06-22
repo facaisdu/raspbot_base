@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(raspbot_driver)
+project(raspbot_base)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -118,7 +118,7 @@ include_directories(
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/raspbot_driver.cpp
+  src/${PROJECT_NAME}/raspbot_base.cpp
 # )
 
 ## Add cmake target dependencies of the library
