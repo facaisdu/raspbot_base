@@ -27,6 +27,8 @@
 #define BIN1 6 
 #define BIN2 5 
 
+#define constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
+
 
 /*******************************************************************************
 * Setup function
@@ -48,26 +50,40 @@ void initROS()
 
   nh.advertise(sensor_state_pub);  
   nh.advertise(version_info_pub);
+ #ifdef SENSOR_IMU
   nh.advertise(imu_pub);
+ #endif
+ 
+#ifdef RC100
   nh.advertise(cmd_vel_rc100_pub);
+#endif
+
   nh.advertise(odom_pub);
   nh.advertise(joint_states_pub);
+
+#ifdef DRIVE_INFOMATION
   nh.advertise(battery_state_pub);
   nh.advertise(mag_pub);
+#endif
 
   tf_broadcaster.init(nh);
 
   // Setting for Motors
   initMotor();
-
+#ifdef SENSOR_IMU
   // Setting for IMU
   sensors.init();
+#endif
 
+#ifdef DIAGNOSIS
   // Init diagnosis
   diagnosis.init();
+#endif
 
+#ifdef RC100
   // Setting for ROBOTIS RC100 remote controller and cmd_vel
   controllers.init(MAX_LINEAR_VELOCITY, MAX_ANGULAR_VELOCITY);
+#endif
 
   // Setting for SLAM and navigation (odometry, joint states, TF)
   initOdom();
@@ -76,7 +92,7 @@ void initROS()
 
   prev_update_time = millis();
 
-  pinMode(LED_WORKING_CHECK, OUTPUT);
+//  pinMode(LED_WORKING_CHECK, OUTPUT);
 
   setup_end = true;
 }
@@ -101,15 +117,19 @@ int main(int argc,char *argv[])
 	  {
 	    updateGoalVelocity();
 	    motor_driver.controlMotor(WHEEL_SEPARATION, goal_velocity);
+	    controlMotor(WHEEL_SEPARATION, goal_velocity);
 	    tTime[0] = t;
 	  }
+#ifdef RC100
 
 	  if ((t-tTime[1]) >= (1000 / CMD_VEL_PUBLISH_FREQUENCY))
 	  {
 	    publishCmdVelFromRC100Msg();
 	    tTime[1] = t;
 	  }
+#endif
 
+#ifdef DRIVE_INFOMATION
 	  if ((t-tTime[2]) >= (1000 / DRIVE_INFORMATION_PUBLISH_FREQUENCY))
 	  {
 	    publishSensorStateMsg();
@@ -118,12 +138,15 @@ int main(int argc,char *argv[])
 	    tTime[2] = t;
 	  }
 
+#endif
+#ifdef SENSOR_IMU
 	  if ((t-tTime[3]) >= (1000 / IMU_PUBLISH_FREQUENCY))
 	  {
 	    publishImuMsg();
 	    publishMagMsg();
 	    tTime[3] = t;
 	  }
+#endif
 
 	  if ((t-tTime[4]) >= (1000 / VERSION_INFORMATION_PUBLISH_FREQUENCY))
 	  {
@@ -141,13 +164,17 @@ int main(int argc,char *argv[])
 
 	  // Send log message after ROS connection
 	  sendLogMsg();
-
+#ifdef RC100
 	  // Receive data from RC100 
 	  controllers.getRCdata(goal_velocity_from_rc100);
+#endif
 
+#ifdef DIAGNOSIS	
 	  // Check push button pressed for simple test drive
 	  driveTest(diagnosis.getButtonPress(3000));
+#endif
 
+#ifdef SENSOR_IMU
 	  // Update the IMU unit
 	  sensors.updateIMU();
 
@@ -157,13 +184,17 @@ int main(int argc,char *argv[])
 
 	  // Start Gyro Calibration after ROS connection
 	  updateGyroCali();
+#endif
 
+#ifdef DIAGNOSIS
 	  // Show LED status
 	  diagnosis.showLedStatus(nh.connected());
+#endif
 
+#ifdef DRIVE_INFOMATION
 	  // Update Voltage
 	  battery_state = diagnosis.updateVoltageCheck(setup_end);
-
+#endif
 	  // Call all the callbacks waiting to be called at that point in time
 	  nh.spinOnce();
 
@@ -187,7 +218,27 @@ void initMotor(void)
 	softPwmCreate(PWMA,0,100);
 	softPwmCreate(PWMB,0,100);
 }
+controlMotor(const float wheel_separation, float* value)
+{
+  bool dxl_comm_result = false;
+  
+  float wheel_velocity_cmd[2];
 
+  float lin_vel = value[LEFT];
+  float ang_vel = value[RIGHT];
+
+  wheel_velocity_cmd[LEFT]   = lin_vel - (ang_vel * wheel_separation / 2);
+  wheel_velocity_cmd[RIGHT]  = lin_vel + (ang_vel * wheel_separation / 2);
+
+  wheel_velocity_cmd[LEFT]  = constrain(wheel_velocity_cmd[LEFT]  * VELOCITY_CONSTANT_VALUE, -LIMIT_X_MAX_VELOCITY, LIMIT_X_MAX_VELOCITY);
+  wheel_velocity_cmd[RIGHT] = constrain(wheel_velocity_cmd[RIGHT] * VELOCITY_CONSTANT_VALUE, -LIMIT_X_MAX_VELOCITY, LIMIT_X_MAX_VELOCITY);
+
+  dxl_comm_result = writeVelocity((int64_t)wheel_velocity_cmd[LEFT], (int64_t)wheel_velocity_cmd[RIGHT]);
+  if (dxl_comm_result == false)
+    return false;
+
+  return true;
+}
 /*******************************************************************************
 * Callback function for cmd_vel msg
 *******************************************************************************/
@@ -249,7 +300,7 @@ void publishCmdVelFromRC100Msg(void)
 
   cmd_vel_rc100_pub.publish(&cmd_vel_rc100_msg);
 }
-
+#ifdef SENSOR_IMU
 /*******************************************************************************
 * Publish msgs (IMU data: angular velocity, linear acceleration, orientation)
 *******************************************************************************/
@@ -275,6 +326,7 @@ void publishMagMsg(void)
 
   mag_pub.publish(&mag_msg);
 }
+#endif
 
 /*******************************************************************************
 * Publish msgs (sensor_state: bumpers, cliffs, buttons, encoders, battery)
@@ -582,7 +634,9 @@ void updateVariable(void)
   {
     if (variable_flag == false)
     {      
+#ifdef SENSOR_IMU
       sensors.initIMU();
+#endif
       initOdom();
 
       variable_flag = true;
@@ -628,6 +682,8 @@ ros::Time addMicros(ros::Time & t, uint32_t _micros)
   return ros::Time(sec, nsec);
 }
 
+#ifdef SENSOR_IMU
+
 /*******************************************************************************
 * Start Gyro Calibration
 *******************************************************************************/
@@ -657,6 +713,7 @@ void updateGyroCali(void)
   }
 }
 
+#endif
 /*******************************************************************************
 * Send log message
 *******************************************************************************/
@@ -675,16 +732,16 @@ void sendLogMsg(void)
   {
     if (log_flag == false)
     {      
-      sprintf(log_msg, "--------------------------");
+      ROS_INFO_STREAM(log_msg, "--------------------------");
       nh.loginfo(log_msg);
 
-      sprintf(log_msg, "Raspbot base is connected!");
+      ROS_INFO_STREAM(log_msg, "Raspbot base is connected!");
       nh.loginfo(log_msg);
 
-      sprintf(log_msg, init_log_data);
+      ROS_INFO_STREAM(log_msg, init_log_data);
       nh.loginfo(log_msg);
 
-      sprintf(log_msg, "--------------------------");
+      ROS_INFO_STREAM(log_msg, "--------------------------");
       nh.loginfo(log_msg);
 
       log_flag = true;
@@ -743,10 +800,18 @@ void initJointStates(void)
 *******************************************************************************/
 void updateGoalVelocity(void)
 {
+#ifdef RC100
   goal_velocity[LINEAR]  = goal_velocity_from_button[LINEAR]  + goal_velocity_from_cmd[LINEAR]  + goal_velocity_from_rc100[LINEAR];
   goal_velocity[ANGULAR] = goal_velocity_from_button[ANGULAR] + goal_velocity_from_cmd[ANGULAR] + goal_velocity_from_rc100[ANGULAR];
+#else if
+  goal_velocity[LINEAR]  = goal_velocity_from_cmd[LINEAR] ;
+  goal_velocity[ANGULAR] = goal_velocity_from_cmd[ANGULAR];
+#endif
 
+#ifdef SENSOR
   sensors.setLedPattern(goal_velocity[LINEAR], goal_velocity[ANGULAR]);
+
+#endif
 }
 
 /*******************************************************************************
@@ -795,4 +860,3 @@ void sendDebuglog(void)
   DEBUG_SERIAL.print("         y : "); DEBUG_SERIAL.println(odom_pose[1]);
   DEBUG_SERIAL.print("     theta : "); DEBUG_SERIAL.println(odom_pose[2]);
 }
-
