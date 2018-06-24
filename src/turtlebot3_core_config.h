@@ -110,6 +110,7 @@ void sendLogMsg(void);
 void initROS(void);
 
 void initMotor(void);
+void controlMotor(const float wheel_separation, float* value);
 
 /*******************************************************************************
 * ROS NodeHandle
