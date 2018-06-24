@@ -29,6 +29,8 @@
 
 #define constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
 
+#define LIMIT_X_MAX_VELOCITY 100
+#define VELOCITY_CONSTANT_VALUE 173
 
 /*******************************************************************************
 * Setup function
@@ -43,8 +45,13 @@ void initROS()
   //nh.getHardware()->setBaud(115200);
 
   nh.subscribe(cmd_vel_sub);
+ #define SOUND
   nh.subscribe(sound_sub);
+ #endif
+ #ifdef DXL
   nh.subscribe(motor_power_sub);
+ #endif
+ 
   nh.subscribe(reset_sub);
 
 
@@ -88,7 +95,9 @@ void initROS()
   // Setting for SLAM and navigation (odometry, joint states, TF)
   initOdom();
 
+#ifdef SENSOR
   initJointStates();
+#endif
 
   prev_update_time = millis();
 
@@ -116,7 +125,7 @@ int main(int argc,char *argv[])
 	  if ((t-tTime[0]) >= (1000 / CONTROL_MOTOR_SPEED_FREQUENCY))
 	  {
 	    updateGoalVelocity();
-	    motor_driver.controlMotor(WHEEL_SEPARATION, goal_velocity);
+	    //motor_driver.controlMotor(WHEEL_SEPARATION, goal_velocity);
 	    controlMotor(WHEEL_SEPARATION, goal_velocity);
 	    tTime[0] = t;
 	  }
@@ -218,9 +227,9 @@ void initMotor(void)
 	softPwmCreate(PWMA,0,100);
 	softPwmCreate(PWMB,0,100);
 }
-controlMotor(const float wheel_separation, float* value)
+void controlMotor(const float wheel_separation, float* value)
 {
-  bool dxl_comm_result = false;
+  bool result = false;
   
   float wheel_velocity_cmd[2];
 
@@ -230,14 +239,8 @@ controlMotor(const float wheel_separation, float* value)
   wheel_velocity_cmd[LEFT]   = lin_vel - (ang_vel * wheel_separation / 2);
   wheel_velocity_cmd[RIGHT]  = lin_vel + (ang_vel * wheel_separation / 2);
 
-  wheel_velocity_cmd[LEFT]  = constrain(wheel_velocity_cmd[LEFT]  * VELOCITY_CONSTANT_VALUE, -LIMIT_X_MAX_VELOCITY, LIMIT_X_MAX_VELOCITY);
-  wheel_velocity_cmd[RIGHT] = constrain(wheel_velocity_cmd[RIGHT] * VELOCITY_CONSTANT_VALUE, -LIMIT_X_MAX_VELOCITY, LIMIT_X_MAX_VELOCITY);
-
-  dxl_comm_result = writeVelocity((int64_t)wheel_velocity_cmd[LEFT], (int64_t)wheel_velocity_cmd[RIGHT]);
-  if (dxl_comm_result == false)
-    return false;
-
-  return true;
+  wheel_velocity_cmd[LEFT]  = constrain((wheel_velocity_cmd[LEFT]^0.5)  * VELOCITY_CONSTANT_VALUE, -LIMIT_X_MAX_VELOCITY, LIMIT_X_MAX_VELOCITY);
+  wheel_velocity_cmd[RIGHT] = constrain((wheel_velocity_cmd[RIGHT]^0.5) * VELOCITY_CONSTANT_VALUE, -LIMIT_X_MAX_VELOCITY, LIMIT_X_MAX_VELOCITY);
 }
 /*******************************************************************************
 * Callback function for cmd_vel msg
@@ -250,7 +253,7 @@ void commandVelocityCallback(const geometry_msgs::Twist& cmd_vel_msg)
   goal_velocity_from_cmd[LINEAR]  = constrain(goal_velocity_from_cmd[LINEAR],  MIN_LINEAR_VELOCITY, MAX_LINEAR_VELOCITY);
   goal_velocity_from_cmd[ANGULAR] = constrain(goal_velocity_from_cmd[ANGULAR], MIN_ANGULAR_VELOCITY, MAX_ANGULAR_VELOCITY);
 }
-
+#ifdef SOUND
 /*******************************************************************************
 * Callback function for sound msg
 *******************************************************************************/
@@ -258,7 +261,9 @@ void soundCallback(const turtlebot3_msgs::Sound& sound_msg)
 {
   sensors.makeSound(sound_msg.value);
 }
+#endif
 
+#ifdef DXL
 /*******************************************************************************
 * Callback function for motor_power msg
 *******************************************************************************/
@@ -268,6 +273,7 @@ void motorPowerCallback(const std_msgs::Bool& power_msg)
 
   motor_driver.setTorque(dxl_power);
 }
+#endif
 
 /*******************************************************************************
 * Callback function for reset msg
@@ -276,20 +282,21 @@ void resetCallback(const std_msgs::Empty& reset_msg)
 {
   char log_msg[50];
 
-  sprintf(log_msg, "Start Calibration of Gyro");
+  ROS_INFO_STREAM(log_msg, "Start Calibration of Gyro");
   nh.loginfo(log_msg);
-
+#ifdef SENSOR
   sensors.calibrationGyro();
+#endif
 
-  sprintf(log_msg, "Calibration End");
+  ROS_INFO_STREAM(log_msg, "Calibration End");
   nh.loginfo(log_msg);
 
   initOdom();
 
-  sprintf(log_msg, "Reset Odometry");
+  ROS_INFO_STREAM(log_msg, "Reset Odometry");
   nh.loginfo(log_msg);  
 }
-
+#ifdef RC100
 /*******************************************************************************
 * Publish msgs (CMD Velocity data from RC100 : angular velocity, linear velocity)
 *******************************************************************************/
@@ -300,6 +307,9 @@ void publishCmdVelFromRC100Msg(void)
 
   cmd_vel_rc100_pub.publish(&cmd_vel_rc100_msg);
 }
+
+#endif
+
 #ifdef SENSOR_IMU
 /*******************************************************************************
 * Publish msgs (IMU data: angular velocity, linear acceleration, orientation)
@@ -778,7 +788,7 @@ void initOdom(void)
   odom.twist.twist.linear.x  = 0.0;
   odom.twist.twist.angular.z = 0.0;
 }
-
+#ifdef SENSOR
 /*******************************************************************************
 * Initialization joint states data
 *******************************************************************************/
@@ -794,7 +804,7 @@ void initJointStates(void)
   joint_states.velocity_length = WHEEL_NUM;
   joint_states.effort_length   = WHEEL_NUM;
 }
-
+#endif
 /*******************************************************************************
 * Update Goal Velocity
 *******************************************************************************/
@@ -814,6 +824,7 @@ void updateGoalVelocity(void)
 #endif
 }
 
+#ifdef DEBUG
 /*******************************************************************************
 * Send Debug data
 *******************************************************************************/
@@ -860,3 +871,5 @@ void sendDebuglog(void)
   DEBUG_SERIAL.print("         y : "); DEBUG_SERIAL.println(odom_pose[1]);
   DEBUG_SERIAL.print("     theta : "); DEBUG_SERIAL.println(odom_pose[2]);
 }
+
+#endif
